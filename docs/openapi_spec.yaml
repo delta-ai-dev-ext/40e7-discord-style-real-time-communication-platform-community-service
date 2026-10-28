@@ -1,0 +1,1724 @@
+openapi: "3.0.3"
+info:
+  title: community_service API
+  version: "1.0.0"
+  description: >
+    Owns communities, channels, roles and permissions, memberships, invites,
+    moderation and the audit log. Acts as the authoritative access-decision
+    source for peer services (chat, voice, realtime gateway) through the
+    internal access endpoints.
+servers:
+  - url: /v1
+    description: Public API (Clerk session JWT required)
+  - url: /internal/v1
+    description: Internal cluster-network API (service-to-service bearer token)
+
+tags:
+  - name: communities
+  - name: channels
+  - name: roles
+  - name: permission-overwrites
+  - name: members
+  - name: invites
+  - name: moderation
+  - name: audit-log
+  - name: internal
+  - name: probes
+
+paths:
+  /healthz:
+    get:
+      operationId: getLiveness
+      summary: Liveness probe
+      tags: [probes]
+      security: []
+      responses:
+        "200":
+          description: Process is responsive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /readyz:
+    get:
+      operationId: getReadiness
+      summary: Readiness probe (PostgreSQL pool + Kafka producer ready)
+      tags: [probes]
+      security: []
+      responses:
+        "200":
+          description: Service is ready to receive traffic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        "503":
+          description: Not ready (dependencies unavailable or shutting down)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities:
+    post:
+      operationId: createCommunity
+      summary: Create a community (creator becomes owner)
+      description: >
+        Creates a community with a default `#general` text channel, a default
+        `General` voice channel, and the implicit `@everyone` role.
+      tags: [communities]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommunityRequest'
+      responses:
+        "201":
+          description: Community created with defaults
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunityDetail'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /me/communities:
+    get:
+      operationId: listMyCommunities
+      summary: List communities the caller belongs to
+      description: >
+        Returns each membership's community with the channels visible to the
+        caller under their effective permissions (sidebar bootstrap).
+      tags: [communities]
+      responses:
+        "200":
+          description: Caller's communities with visible channels
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyCommunityList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+    get:
+      operationId: getCommunity
+      summary: Load a community with visible channels and caller's effective permissions
+      tags: [communities]
+      responses:
+        "200":
+          description: Community detail for the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunityDetail'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updateCommunity
+      summary: Rename a community (owner only)
+      tags: [communities]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCommunityRequest'
+      responses:
+        "200":
+          description: Renamed community
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Community'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteCommunity
+      summary: Delete a community (owner only)
+      tags: [communities]
+      responses:
+        "204":
+          description: Community deleted (emits community_deleted)
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/channels:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+    post:
+      operationId: createChannel
+      summary: Create a text or voice channel (requires MANAGE_CHANNELS)
+      tags: [channels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChannelRequest'
+      responses:
+        "201":
+          description: Channel created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/channels/{channel_id}:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+      - $ref: '#/components/parameters/ChannelId'
+    patch:
+      operationId: updateChannel
+      summary: Update channel name or position (requires MANAGE_CHANNELS)
+      tags: [channels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateChannelRequest'
+      responses:
+        "200":
+          description: Updated channel
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteChannel
+      summary: Delete a channel (requires MANAGE_CHANNELS)
+      tags: [channels]
+      responses:
+        "204":
+          description: Channel deleted (emits channel_deleted)
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/channels/{channel_id}/permission-overwrites/{target_type}/{target_id}:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+      - $ref: '#/components/parameters/ChannelId'
+      - $ref: '#/components/parameters/OverwriteTargetType'
+      - $ref: '#/components/parameters/OverwriteTargetId'
+    put:
+      operationId: upsertPermissionOverwrite
+      summary: Set allow/deny permission overwrites for a role or member on a channel
+      tags: [permission-overwrites]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionOverwriteRequest'
+      responses:
+        "200":
+          description: Overwrite stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionOverwrite'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deletePermissionOverwrite
+      summary: Remove a permission overwrite from a channel
+      tags: [permission-overwrites]
+      responses:
+        "204":
+          description: Overwrite removed (emits permission_overwrites_changed)
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/roles:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+    get:
+      operationId: listRoles
+      summary: List community roles
+      tags: [roles]
+      responses:
+        "200":
+          description: Roles ordered by position
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createRole
+      summary: Create a role (requires MANAGE_ROLES)
+      tags: [roles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoleRequest'
+      responses:
+        "201":
+          description: Role created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/roles/{role_id}:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+      - $ref: '#/components/parameters/RoleId'
+    patch:
+      operationId: updateRole
+      summary: Update a role's name, permissions, or position (requires MANAGE_ROLES)
+      tags: [roles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+      responses:
+        "200":
+          description: Updated role (emits roles_changed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteRole
+      summary: Delete a role (requires MANAGE_ROLES)
+      tags: [roles]
+      responses:
+        "204":
+          description: Role deleted (emits roles_changed)
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/members:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+    get:
+      operationId: listMembers
+      summary: List community memberships (cursor-paginated)
+      tags: [members]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        "200":
+          description: Paginated memberships
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/members/me:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+    patch:
+      operationId: updateMyMembership
+      summary: Set the caller's own nickname
+      tags: [members]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNicknameRequest'
+      responses:
+        "200":
+          description: Membership with updated nickname
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Membership'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: leaveCommunity
+      summary: Leave the community (owner must delete the community instead)
+      tags: [members]
+      responses:
+        "204":
+          description: Membership removed (emits member_left)
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Owner cannot leave their own community
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/members/{user_id}/roles/{role_id}:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+      - $ref: '#/components/parameters/TargetUserId'
+      - $ref: '#/components/parameters/RoleId'
+    put:
+      operationId: assignMemberRole
+      summary: Assign a role to a member (requires MANAGE_ROLES)
+      tags: [members]
+      responses:
+        "204":
+          description: Role assigned (emits member_roles_changed)
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: removeMemberRole
+      summary: Remove a role from a member (requires MANAGE_ROLES)
+      tags: [members]
+      responses:
+        "204":
+          description: Role removed (emits member_roles_changed)
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/invites:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+    post:
+      operationId: createInvite
+      summary: Generate a shareable invite link (requires CREATE_INVITE)
+      tags: [invites]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInviteRequest'
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invite'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    get:
+      operationId: listInvites
+      summary: List the community's active invites
+      tags: [invites]
+      responses:
+        "200":
+          description: Active invites
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/invites/{code}:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+      - $ref: '#/components/parameters/InviteCode'
+    delete:
+      operationId: revokeInvite
+      summary: Revoke an invite by code
+      tags: [invites]
+      responses:
+        "204":
+          description: Invite revoked
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/email-invites:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+    post:
+      operationId: createEmailInvite
+      summary: Invite an email address (invite created, email queued) (requires CREATE_INVITE)
+      tags: [invites]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmailInviteRequest'
+      responses:
+        "202":
+          description: Invite created and email event queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailInviteAccepted'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /invites/{code}:
+    get:
+      operationId: getInvitePreview
+      summary: Preview an invite (invite landing page)
+      tags: [invites]
+      parameters:
+        - $ref: '#/components/parameters/InviteCode'
+      responses:
+        "200":
+          description: Invite preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitePreview'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          description: Unknown code (error code invite_invalid)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "410":
+          description: Gone (error code invite_expired, invite_exhausted, or invite_revoked)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /invites/{code}/accept:
+    post:
+      operationId: acceptInvite
+      summary: Join a community via invite (idempotent if already a member)
+      tags: [invites]
+      parameters:
+        - $ref: '#/components/parameters/InviteCode'
+      responses:
+        "200":
+          description: Already a member (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Membership'
+        "201":
+          description: Membership created (emits member_joined)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Membership'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Banned from the community (error code banned, with member-facing explanation)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: Unknown code (error code invite_invalid)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "410":
+          description: Gone (error code invite_expired, invite_exhausted, or invite_revoked)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/moderation/timeouts:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+    post:
+      operationId: timeoutMember
+      summary: Time out a member (up to 28 days) (requires TIMEOUT_MEMBERS)
+      tags: [moderation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeoutRequest'
+      responses:
+        "200":
+          description: Membership with timeout state (emits member_timed_out)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Membership'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/moderation/timeouts/{user_id}:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+      - $ref: '#/components/parameters/TargetUserId'
+    delete:
+      operationId: clearTimeout
+      summary: Clear a member's timeout (requires TIMEOUT_MEMBERS)
+      tags: [moderation]
+      parameters:
+        - $ref: '#/components/parameters/OptionalReasonQuery'
+      responses:
+        "204":
+          description: Timeout cleared (emits member_timeout_cleared)
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/moderation/kicks:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+    post:
+      operationId: kickMember
+      summary: Kick a member (requires KICK_MEMBERS)
+      tags: [moderation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KickRequest'
+      responses:
+        "204":
+          description: Member kicked (emits member_kicked)
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/moderation/bans:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+    get:
+      operationId: listBans
+      summary: List bans (cursor-paginated)
+      tags: [moderation]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        "200":
+          description: Paginated bans
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BanList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: banMember
+      summary: Ban a member, optionally with expiry (requires BAN_MEMBERS)
+      tags: [moderation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BanRequest'
+      responses:
+        "201":
+          description: Ban created (emits member_banned)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ban'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/moderation/bans/{user_id}:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+      - $ref: '#/components/parameters/TargetUserId'
+    delete:
+      operationId: unbanMember
+      summary: Unban a user (requires BAN_MEMBERS)
+      tags: [moderation]
+      parameters:
+        - $ref: '#/components/parameters/OptionalReasonQuery'
+      responses:
+        "204":
+          description: Ban lifted (emits member_unbanned)
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/audit-log:
+    parameters:
+      - $ref: '#/components/parameters/CommunityId'
+    get:
+      operationId: listAuditLog
+      summary: View the audit log (requires VIEW_AUDIT_LOG)
+      tags: [audit-log]
+      parameters:
+        - $ref: '#/components/parameters/ActionFilter'
+        - name: actor_id
+          in: query
+          schema:
+            type: string
+        - name: target_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        "200":
+          description: Paginated audit log entries (newest first)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /channels/{channel_id}/access/{user_id}:
+    get:
+      operationId: getChannelAccess
+      summary: Authoritative per-channel access decision for a user
+      description: >
+        Consumed by chat_service and voice_service. Returns the resolved
+        permission flags for the user on the channel's community.
+      tags: [internal]
+      security:
+        - InternalServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/ChannelId'
+        - $ref: '#/components/parameters/TargetUserId'
+      responses:
+        "200":
+          description: Access decision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelAccess'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+  /communities/{community_id}/members/{user_id}/access:
+    get:
+      operationId: getMemberAccess
+      summary: Authoritative member access for gateway subscriptions
+      description: Consumed by realtime_gateway to authorize community subscriptions.
+      tags: [internal]
+      security:
+        - InternalServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/CommunityId'
+        - $ref: '#/components/parameters/TargetUserId'
+      responses:
+        "200":
+          description: Member access decision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberAccess'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    ClerkSessionJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Clerk session JWT verified offline against Clerk's published JWKS.
+    InternalServiceToken:
+      type: http
+      scheme: bearer
+      description: >
+        Shared-secret bearer token for /internal/v1/* endpoints, reachable only
+        on the cluster network. One secret per caller, rotated via K8s secrets.
+
+  parameters:
+    CommunityId:
+      name: community_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ChannelId:
+      name: channel_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RoleId:
+      name: role_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TargetUserId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Clerk user id (platform user_id from the JWT `sub` claim).
+    OverwriteTargetType:
+      name: target_type
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [role, member]
+    OverwriteTargetId:
+      name: target_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    InviteCode:
+      name: code
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 32
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    ActionFilter:
+      name: action
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/AuditAction'
+    OptionalReasonQuery:
+      name: reason
+      in: query
+      required: false
+      schema:
+        type: string
+        maxLength: 512
+
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated but not authorized (permission, hierarchy, or state constraint)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Business rule violation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server error (no internal details exposed)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error code (e.g. missing_permission, invite_expired, banned, member_timed_out).
+              example: missing_permission
+            message:
+              type: string
+              description: Human-readable, non-punitive message.
+            details:
+              description: Optional structured context (e.g. timed_out_until, member_message).
+
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+
+    Permission:
+      type: string
+      enum:
+        - VIEW_CHANNEL
+        - SEND_MESSAGES
+        - READ_MESSAGE_HISTORY
+        - CONNECT
+        - SPEAK
+        - VIDEO
+        - CREATE_INVITE
+        - MANAGE_CHANNELS
+        - MANAGE_ROLES
+        - TIMEOUT_MEMBERS
+        - KICK_MEMBERS
+        - BAN_MEMBERS
+        - VIEW_AUDIT_LOG
+        - ADMINISTRATOR
+
+    Community:
+      type: object
+      required: [id, name, owner_user_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+        owner_user_id:
+          type: string
+        member_count:
+          type: integer
+          description: Present on invite preview and community detail when known.
+        created_at:
+          type: string
+          format: date-time
+
+    CommunityDetail:
+      type: object
+      required: [id, name, owner_user_id, channels, effective_permissions]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        owner_user_id:
+          type: string
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/Channel'
+        effective_permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+          description: The caller's resolved permissions for this community.
+        created_at:
+          type: string
+          format: date-time
+
+    MyCommunityList:
+      type: object
+      required: [communities]
+      properties:
+        communities:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommunityDetail'
+
+    CreateCommunityRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    UpdateCommunityRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    Channel:
+      type: object
+      required: [id, community_id, name, type, position, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        community_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+        type:
+          type: string
+          enum: [text, voice]
+        position:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    CreateChannelRequest:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        type:
+          type: string
+          enum: [text, voice]
+        position:
+          type: integer
+          description: Optional explicit ordering position.
+
+    UpdateChannelRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        position:
+          type: integer
+      minProperties: 1
+
+    Role:
+      type: object
+      required: [id, community_id, name, permissions, position, is_everyone, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        community_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+        position:
+          type: integer
+          description: Higher position outranks lower; hierarchy enforcement uses it.
+        is_everyone:
+          type: boolean
+          description: True only for the implicit @everyone role (not directly mutable).
+        created_at:
+          type: string
+          format: date-time
+
+    RoleList:
+      type: object
+      required: [roles]
+      properties:
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+
+    CreateRoleRequest:
+      type: object
+      required: [name, permissions, position]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+          maxItems: 14
+        position:
+          type: integer
+
+    UpdateRoleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+        position:
+          type: integer
+      minProperties: 1
+
+    PermissionOverwrite:
+      type: object
+      required: [channel_id, target_type, target_id, allow, deny]
+      properties:
+        channel_id:
+          type: string
+          format: uuid
+        target_type:
+          type: string
+          enum: [role, member]
+        target_id:
+          type: string
+          format: uuid
+        allow:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+        deny:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+
+    PermissionOverwriteRequest:
+      type: object
+      required: [allow, deny]
+      properties:
+        allow:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+        deny:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+
+    Membership:
+      type: object
+      required: [community_id, user_id, roles, nickname, timed_out_until, joined_at]
+      properties:
+        community_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            format: uuid
+        nickname:
+          type:
+            - string
+            - "null"
+        timed_out_until:
+          type:
+            - string
+            - "null"
+          format: date-time
+        joined_at:
+          type: string
+          format: date-time
+
+    UpdateNicknameRequest:
+      type: object
+      required: [nickname]
+      properties:
+        nickname:
+          type:
+            - string
+            - "null"
+          maxLength: 32
+          description: Null clears the nickname.
+
+    Member:
+      type: object
+      required: [user_id, roles, nickname, timed_out_until, joined_at]
+      properties:
+        user_id:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            format: uuid
+        nickname:
+          type:
+            - string
+            - "null"
+        timed_out_until:
+          type:
+            - string
+            - "null"
+          format: date-time
+        joined_at:
+          type: string
+          format: date-time
+
+    MemberList:
+      type: object
+      required: [members, next_cursor]
+      properties:
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/Member'
+        next_cursor:
+          type:
+            - string
+            - "null"
+
+    Invite:
+      type: object
+      required: [code, community_id, url, inviter_user_id, created_at, expires_at, max_uses, used_count, revoked]
+      properties:
+        code:
+          type: string
+        community_id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          description: Shareable invite URL containing the code.
+        inviter_user_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        max_uses:
+          type:
+            - integer
+            - "null"
+        used_count:
+          type: integer
+        revoked:
+          type: boolean
+
+    InviteList:
+      type: object
+      required: [invites]
+      properties:
+        invites:
+          type: array
+          items:
+            $ref: '#/components/schemas/Invite'
+
+    CreateInviteRequest:
+      type: object
+      properties:
+        expires_in_seconds:
+          type: integer
+          minimum: 60
+          description: Optional relative expiry; null means no expiry.
+        max_uses:
+          type: integer
+          minimum: 1
+          description: Optional maximum number of accepts; null means unlimited.
+
+    CreateEmailInviteRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        expires_in_seconds:
+          type: integer
+          minimum: 60
+
+    EmailInviteAccepted:
+      type: object
+      required: [invite_code, status]
+      properties:
+        invite_code:
+          type: string
+        status:
+          type: string
+          enum: [queued]
+          description: The invitation email has been queued for delivery (event emitted).
+
+    InvitePreview:
+      type: object
+      required: [community_name]
+      properties:
+        community_name:
+          type: string
+        member_count:
+          type: integer
+        inviter_username:
+          type:
+            - string
+            - "null"
+          description: Resolved from the JWT username claim by the inviter; null when unavailable.
+        expires_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+
+    TimeoutRequest:
+      type: object
+      required: [user_id, duration_seconds, reason]
+      properties:
+        user_id:
+          type: string
+        duration_seconds:
+          type: integer
+          minimum: 60
+          maximum: 2419200
+          description: Maximum 28 days (2419200 seconds).
+        reason:
+          type: string
+          maxLength: 512
+          description: Internal reason, recorded in the audit log.
+        member_message:
+          type: string
+          maxLength: 512
+          description: Optional member-facing explanation (non-punitive wording).
+
+    KickRequest:
+      type: object
+      required: [user_id, reason]
+      properties:
+        user_id:
+          type: string
+        reason:
+          type: string
+          maxLength: 512
+        member_message:
+          type: string
+          maxLength: 512
+
+    BanRequest:
+      type: object
+      required: [user_id, reason]
+      properties:
+        user_id:
+          type: string
+        reason:
+          type: string
+          maxLength: 512
+        member_message:
+          type: string
+          maxLength: 512
+        expires_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Optional ban expiry; null means permanent.
+
+    Ban:
+      type: object
+      required: [community_id, user_id, reason, expires_at, created_at]
+      properties:
+        community_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+        reason:
+          type: string
+        member_message:
+          type:
+            - string
+            - "null"
+        expires_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    BanList:
+      type: object
+      required: [bans, next_cursor]
+      properties:
+        bans:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ban'
+        next_cursor:
+          type:
+            - string
+            - "null"
+
+    AuditAction:
+      type: string
+      enum:
+        - community_renamed
+        - community_deleted
+        - channel_created
+        - channel_updated
+        - channel_deleted
+        - role_created
+        - role_updated
+        - role_deleted
+        - permission_overwrite_set
+        - permission_overwrite_removed
+        - member_role_assigned
+        - member_role_removed
+        - invite_created
+        - invite_revoked
+        - email_invite_created
+        - member_timed_out
+        - member_timeout_cleared
+        - member_kicked
+        - member_banned
+        - member_unbanned
+
+    AuditLogEntry:
+      type: object
+      required: [id, community_id, actor_user_id, action, target, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        community_id:
+          type: string
+          format: uuid
+        actor_user_id:
+          type: string
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        target:
+          type: string
+          description: Target identifier (user_id, channel_id, role_id, invite code, or community_id).
+        reason:
+          type:
+            - string
+            - "null"
+        changes_summary:
+          type: object
+          description: Before/after summary of the change (shape varies by action).
+        created_at:
+          type: string
+          format: date-time
+
+    AuditLogList:
+      type: object
+      required: [entries, next_cursor]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLogEntry'
+        next_cursor:
+          type:
+            - string
+            - "null"
+
+    ChannelAccess:
+      type: object
+      required: [community_id, channel_type, is_member, can_view, can_read_history, can_send, can_connect, can_speak, can_video, timed_out_until, banned]
+      properties:
+        community_id:
+          type: string
+          format: uuid
+        channel_type:
+          type: string
+          enum: [text, voice]
+        is_member:
+          type: boolean
+        can_view:
+          type: boolean
+        can_read_history:
+          type: boolean
+        can_send:
+          type: boolean
+        can_connect:
+          type: boolean
+        can_speak:
+          type: boolean
+        can_video:
+          type: boolean
+        timed_out_until:
+          type:
+            - string
+            - "null"
+          format: date-time
+        banned:
+          type: boolean
+
+    MemberAccess:
+      type: object
+      required: [is_member, banned, visible_channel_ids, timed_out_until]
+      properties:
+        is_member:
+          type: boolean
+        banned:
+          type: boolean
+        visible_channel_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        timed_out_until:
+          type:
+            - string
+            - "null"
+          format: date-time
+
+security:
+  - ClerkSessionJwt: []
