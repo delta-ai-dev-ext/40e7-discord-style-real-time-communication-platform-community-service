@@ -40,7 +40,7 @@ Persistent technical memory for the Coding Agent and future maintainers. Behavio
 
 ---
 
-## Kubernetes Lifecycle & Probes
+## Container Lifecycle & Probes
 
 - **Statelessness**: strictly stateless — no session state, no mutable files on disk. All durable state lives in PostgreSQL; async delivery through Kafka. Safe with `replicas > 1`.
 - **`GET /healthz` (liveness)**: lightweight; returns `200` while the event loop responds. MUST NOT fail on transient PostgreSQL/Kafka hiccups.
@@ -97,7 +97,7 @@ community_service/
 
 ## Configuration & Secrets Management
 
-12-factor: everything from environment variables, validated by a Zod schema in `src/config.ts` at startup (fail fast with a structured error log). No `.env` in production (local dev only, git-ignored). Production secrets arrive via Kubernetes-mounted env vars.
+12-factor: everything from environment variables, validated by a Zod schema in `src/config.ts` at startup (fail fast with a structured error log). No `.env` in production (local dev only, git-ignored). Production secrets arrive via environment variables injected from your platform secret store.
 
 | Variable | Required | Purpose |
 |---|---|---|
@@ -109,7 +109,7 @@ community_service/
 | `KAFKA_TLS_ENABLED` | no | TLS to brokers |
 | `CLERK_JWKS_URL` | **yes** | Clerk published JWKS for offline JWT verification |
 | `CLERK_ISSUER` | **yes** | Expected JWT `iss` claim |
-| `INTERNAL_SERVICE_TOKENS` | **yes** | Comma-separated per-caller shared secrets for `/internal/v1/*`; rotate via K8s secrets |
+| `INTERNAL_SERVICE_TOKENS` | **yes** | Comma-separated per-caller shared secrets for `/internal/v1/*`; rotate via your platform secret store |
 | `LOG_LEVEL` | no (default `info`) | `debug\|info\|warn\|error` |
 | `SHUTDOWN_TIMEOUT_MS` | no (default 20000) | Graceful drain budget |
 

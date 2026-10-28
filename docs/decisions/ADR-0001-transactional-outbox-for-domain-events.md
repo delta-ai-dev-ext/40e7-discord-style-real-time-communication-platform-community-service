@@ -19,7 +19,7 @@ Additional constraints from the global architecture:
 - Producers with database state publish through a transactional outbox (`SYSTEM_DESIGN.md` §5).
 - Per-entity ordering: `community_events` uses `community_id` as the partition key.
 - Consumers are idempotent by `event_id`.
-- The service runs as stateless Kubernetes pods with `replicas > 1`, so the relay must tolerate concurrent pods.
+- The service runs as stateless container replicas with `replicas > 1`, so the relay must tolerate concurrent replicas.
 
 ## Decision
 Every state change that has a corresponding domain event inserts the event into an `outbox_event` table **inside the same database transaction** as the change. A background relay in each pod polls pending rows, publishes them to Kafka in `(partition_key, created_at, id)` order, and marks them `published`. Delivery is at-least-once; downstream consumers dedupe by `event_id`. `community_outbox_lag_seconds` (age of the oldest pending row) is monitored against the publish-lag SLO (p95 < 2 s).

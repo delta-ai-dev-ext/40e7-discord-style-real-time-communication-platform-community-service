@@ -22,8 +22,8 @@ entities:
   evidence:
   - path: docs/architecture.md
     quote: 'Client sends `Authorization: Bearer <clerk_session_jwt>`.'
-- id: k8s
-  label: Kubernetes control plane
+- id: platform
+  label: Container platform
   kind: annotation
   role: inbound
   row: 336
@@ -58,7 +58,7 @@ entities:
   name: community_service
   label: community_service
   kind: service
-  technology: kubernetes-pod
+  technology: container
   role: service
   row: 250
   evidence:
@@ -97,8 +97,8 @@ relationships:
   evidence:
   - path: docs/architecture.md
     quote: Public REST endpoints (Clerk JWT verified offline against Clerk JWKS)
-- id: r-k8s
-  source: k8s
+- id: r-platform
+  source: platform
   target: svc
   type: request
   interaction:
@@ -194,7 +194,7 @@ relationships:
 view:
   entities:
   - clients
-  - k8s
+  - platform
   - chat
   - voice
   - gateway
@@ -210,11 +210,11 @@ view:
     - r-clients
     label: REST + Clerk JWT
     flow: forward
-  - id: e-k8s
-    source: k8s
+  - id: e-platform
+    source: platform
     target: svc
     relationships:
-    - r-k8s
+    - r-platform
     label: HTTP probes
     flow: forward
   - id: e-chat

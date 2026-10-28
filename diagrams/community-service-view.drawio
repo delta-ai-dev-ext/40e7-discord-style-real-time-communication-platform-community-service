@@ -19,10 +19,10 @@
 <mxCell id="clients-t" value="Platform clients" vertex="1" parent="1" style="text;html=0;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontColor=#0B1F33;fontSize=12;" deltaKind="annotation">
 <mxGeometry x="40" y="276" width="240" height="24" as="geometry" />
 </mxCell>
-<mxCell id="k8s" value="" vertex="1" parent="1" style="rounded=1;html=0;fillColor=#FFFFFF;strokeColor=#0B1F33;fontColor=#0B1F33;" deltaKind="annotation" deltaRole="inbound">
+<mxCell id="platform" value="" vertex="1" parent="1" style="rounded=1;html=0;fillColor=#FFFFFF;strokeColor=#0B1F33;fontColor=#0B1F33;" deltaKind="annotation" deltaRole="inbound">
 <mxGeometry x="40" y="336" width="240" height="56" as="geometry" />
 </mxCell>
-<mxCell id="k8s-t" value="Kubernetes control plane" vertex="1" parent="1" style="text;html=0;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontColor=#0B1F33;fontSize=12;" deltaKind="annotation">
+<mxCell id="platform-t" value="Container platform" vertex="1" parent="1" style="text;html=0;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontColor=#0B1F33;fontSize=12;" deltaKind="annotation">
 <mxGeometry x="40" y="352" width="240" height="24" as="geometry" />
 </mxCell>
 <mxCell id="chat" value="" vertex="1" parent="1" style="rounded=1;html=0;fillColor=#FFFFFF;strokeColor=#0B1F33;fontColor=#0B1F33;" deltaKind="annotation" deltaRole="inbound">
@@ -60,7 +60,7 @@
 <mxPoint x="0" y="-14" as="offset" />
 </mxGeometry>
 </mxCell>
-<mxCell id="e-k8s" value="HTTP probes" edge="1" parent="1" source="k8s" target="svc" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#0E7C78;strokeWidth=1.6;dashed=0;startArrow=none;endArrow=block;endFill=1;fontColor=#0B1F33;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.3;" deltaChannel="direct" deltaRelationship="request">
+<mxCell id="e-platform" value="HTTP probes" edge="1" parent="1" source="platform" target="svc" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#0E7C78;strokeWidth=1.6;dashed=0;startArrow=none;endArrow=block;endFill=1;fontColor=#0B1F33;fontSize=11;exitX=1;exitY=0.5;entryX=0;entryY=0.3;" deltaChannel="direct" deltaRelationship="request">
 <mxGeometry relative="1" as="geometry">
 <mxPoint x="0" y="-14" as="offset" />
 </mxGeometry>

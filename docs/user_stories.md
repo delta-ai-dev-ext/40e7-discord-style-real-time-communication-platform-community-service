@@ -302,7 +302,7 @@ All roles below refer to platform users authenticated with a Clerk session JWT, 
 
 ## US-019: Health and readiness probes
 
-**As a** Kubernetes control plane,
+**As a** container platform,
 **I want to** probe liveness and readiness,
 **So that** traffic only reaches a fully capable pod.
 

@@ -283,9 +283,9 @@ Indexes: `(status, created_at)` for relay polling; `(partition_key, created_at, 
 
 ---
 
-## 6. Stateless Kubernetes Operational Model
+## Stateless Container Operational Model
 
-- **Stateless pods (`replicas ≥ 1`)**: all state in PostgreSQL; Kafka is the only async channel. No local mutable state; safe to scale horizontally and reschedule at any time.
+- **Stateless replicas (`replicas >= 1`)**: all state in PostgreSQL; Kafka is the only async channel. No local mutable state; safe to scale horizontally and reschedule at any time.
 - **Graceful shutdown**: on `SIGTERM`/`SIGINT` — (1) `/readyz` starts returning `503`; (2) stop accepting new HTTP requests and pause the outbox relay; (3) drain in-flight requests within a bounded timeout; (4) close the DB pool and Kafka producer; exit `0`.
 - **Probes**: `/healthz` liveness (process responsive; must not fail on transient dependency hiccups); `/readyz` readiness (PostgreSQL pool + Kafka producer connected; `503` during shutdown).
 - **Concurrency safety with `replicas > 1`**: every mutation is a short transaction with unique constraints as the conflict arbiter (idempotent joins, single active ban, single `@everyone` role). The outbox relay drains per-partition-key ordering; duplicate in-flight publishes across pods are harmless because consumers dedupe by `event_id`.

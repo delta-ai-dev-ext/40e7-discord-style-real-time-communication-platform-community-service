@@ -960,7 +960,7 @@ components:
       scheme: bearer
       description: >
         Shared-secret bearer token for /internal/v1/* endpoints, reachable only
-        on the cluster network. One secret per caller, rotated via K8s secrets.
+        on the cluster network. One secret per caller, rotated via your platform secret store.
 
   parameters:
     CommunityId:
