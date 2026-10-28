@@ -1,0 +1,17 @@
+# Bun configuration — community_service
+
+[install]
+# Dependencies are resolved to latest stable at `bun add` time (see docs/engineering_guide.md).
+exact = false
+
+[test]
+root = "tests"
+coverage = true
+coverageSkipTestFiles = true
+coverageReporter = ["text"]
+# ≥ 80% line/function/statement coverage for service code.
+coverageThreshold = { line = 0.8, function = 0.8, statement = 0.8 }
+# Not unit-testable by design:
+#   src/index.ts                    — process entrypoint (server bind, signals, real pool/producer)
+#   src/repositories/postgres/**    — pg/drizzle driver adapter (exercised against a live DB, not in unit runs)
+coveragePathIgnorePatterns = ["src/index.ts", "src/repositories/postgres/**", "src/**/*.d.ts"]

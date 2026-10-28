@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+.bun/
+*.log
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+.DS_Store
