@@ -1,0 +1,260 @@
+schema_version: 2
+diagram_id: community-service-view
+mode: service
+orientation: LR
+scope: community_service service view - community structure, permissions and authoritative
+  access decisions.
+sources:
+- path: docs/architecture.md
+  sha256: 5d75f36fad048767c0765ffb82184a96afc96796cad98f62c9b145e2c43ab50b
+- path: docs/decisions/ADR-0001-transactional-outbox-for-domain-events.md
+  sha256: 1068887b94e11b4ad668c0b1ba4c1b89dbd836b00afac0cc7646ebcf61009600
+- path: docs/openapi_spec.yaml
+  sha256: 72f4fe16dc75ef8309d4334219f343653be458cc8ffb3bf34fd46f685c8766ed
+- path: docs/user_stories.md
+  sha256: 51034260c341b3b306d1b5d7e5ceb825f2f038ccad26a655b9f6306189d9ea36
+entities:
+- id: clients
+  label: Platform clients
+  kind: annotation
+  role: inbound
+  row: 260
+  evidence:
+  - path: docs/architecture.md
+    quote: 'Client sends `Authorization: Bearer <clerk_session_jwt>`.'
+- id: k8s
+  label: Kubernetes control plane
+  kind: annotation
+  role: inbound
+  row: 336
+  evidence:
+  - path: docs/openapi_spec.yaml
+    quote: Readiness probe (PostgreSQL pool + Kafka producer ready)
+- id: chat
+  label: chat_service
+  kind: annotation
+  role: inbound
+  row: 412
+  evidence:
+  - path: docs/openapi_spec.yaml
+    quote: Consumed by chat_service and voice_service.
+- id: voice
+  label: voice_service
+  kind: annotation
+  role: inbound
+  row: 488
+  evidence:
+  - path: docs/openapi_spec.yaml
+    quote: Consumed by chat_service and voice_service.
+- id: gateway
+  label: realtime_gateway
+  kind: annotation
+  role: inbound
+  row: 564
+  evidence:
+  - path: docs/openapi_spec.yaml
+    quote: Consumed by realtime_gateway to authorize community subscriptions.
+- id: svc
+  name: community_service
+  label: community_service
+  kind: service
+  technology: kubernetes-pod
+  role: service
+  row: 250
+  evidence:
+  - path: docs/architecture.md
+    quote: '`community_service` is the **authoritative owner of community structure
+      and access decisions**'
+- id: kafka
+  name: Kafka
+  label: Kafka
+  kind: broker
+  technology: kafka
+  role: outbound
+  row: 30
+  evidence:
+  - path: docs/architecture.md
+    quote: '`community_service` is a **pure Kafka producer**.'
+- id: db
+  label: community PostgreSQL
+  kind: database
+  technology: postgresql
+  role: outbound
+  row: 396
+  evidence:
+  - path: docs/architecture.md
+    quote: One logical database owned exclusively by `community_service`.
+relationships:
+- id: r-clients
+  source: clients
+  target: svc
+  type: request
+  interaction:
+    channel: direct
+    purpose: public API requests
+    protocol: REST
+    exchange_id: public-api
+  evidence:
+  - path: docs/architecture.md
+    quote: Public REST endpoints (Clerk JWT verified offline against Clerk JWKS)
+- id: r-k8s
+  source: k8s
+  target: svc
+  type: request
+  interaction:
+    channel: direct
+    purpose: liveness and readiness probes
+    protocol: HTTP
+    exchange_id: probes
+  evidence:
+  - path: docs/architecture.md
+    quote: '**HTTP API layer** | Public REST endpoints (Clerk JWT verified offline
+      against Clerk JWKS), internal access endpoints (service bearer token, cluster-network
+      only), probes'
+- id: r-chat
+  source: chat
+  target: svc
+  type: request
+  interaction:
+    channel: direct
+    purpose: per-channel access decisions
+    protocol: REST
+    exchange_id: channel-access
+  evidence:
+  - path: docs/architecture.md
+    quote: Public REST endpoints (Clerk JWT verified offline against Clerk JWKS),
+      internal access endpoints (service bearer token, cluster-network only), probes
+- id: r-voice
+  source: voice
+  target: svc
+  type: request
+  interaction:
+    channel: direct
+    purpose: per-channel access decisions
+    protocol: REST
+    exchange_id: channel-access
+  evidence:
+  - path: docs/architecture.md
+    quote: Public REST endpoints (Clerk JWT verified offline against Clerk JWKS),
+      internal access endpoints (service bearer token, cluster-network only), probes
+- id: r-gateway
+  source: gateway
+  target: svc
+  type: request
+  interaction:
+    channel: direct
+    purpose: community member access decisions
+    protocol: REST
+    exchange_id: member-access
+  evidence:
+  - path: docs/architecture.md
+    quote: Public REST endpoints (Clerk JWT verified offline against Clerk JWKS),
+      internal access endpoints (service bearer token, cluster-network only), probes
+- id: r-db
+  source: svc
+  target: db
+  type: ownership
+  evidence:
+  - path: docs/architecture.md
+    quote: One logical database owned exclusively by `community_service`.
+- id: r-prod-events
+  source: svc
+  target: kafka
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: community state change notifications
+    protocol: Kafka
+  messaging:
+    role: producer
+    topic: community_events
+  evidence:
+  - path: docs/architecture.md
+    quote: Topic `community_events` (partition key `community_id`)
+  - path: docs/decisions/ADR-0001-transactional-outbox-for-domain-events.md
+    quote: publishes them to Kafka in `(partition_key, created_at, id)` order
+- id: r-prod-invites
+  source: svc
+  target: kafka
+  type: event
+  direction: forward
+  interaction:
+    channel: messaging
+    purpose: invite email notifications
+    protocol: Kafka
+  messaging:
+    role: producer
+    topic: community_invite_events
+  evidence:
+  - path: docs/architecture.md
+    quote: Topic `community_invite_events` (partition key `community_id`)
+  - path: docs/decisions/ADR-0001-transactional-outbox-for-domain-events.md
+    quote: publishes them to Kafka in `(partition_key, created_at, id)` order
+view:
+  entities:
+  - clients
+  - k8s
+  - chat
+  - voice
+  - gateway
+  - svc
+  - kafka
+  - db
+  groups: []
+  edges:
+  - id: e-clients
+    source: clients
+    target: svc
+    relationships:
+    - r-clients
+    label: REST + Clerk JWT
+    flow: forward
+  - id: e-k8s
+    source: k8s
+    target: svc
+    relationships:
+    - r-k8s
+    label: HTTP probes
+    flow: forward
+  - id: e-chat
+    source: chat
+    target: svc
+    relationships:
+    - r-chat
+    label: REST internal
+    flow: forward
+  - id: e-voice
+    source: voice
+    target: svc
+    relationships:
+    - r-voice
+    label: REST internal
+    flow: forward
+  - id: e-gateway
+    source: gateway
+    target: svc
+    relationships:
+    - r-gateway
+    label: REST internal
+    flow: forward
+  - id: e-db
+    source: svc
+    target: db
+    relationships:
+    - r-db
+    label: SQL
+    flow: forward
+  - id: e-prod-events
+    source: svc
+    target: kafka
+    relationships:
+    - r-prod-events
+    - r-prod-invites
+    label: 'Producers
+
+      community_service:community_events
+
+      community_service:community_invite_events'
+    flow: forward
+  omitted: []
